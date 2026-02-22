@@ -1,0 +1,24 @@
+{
+  "name": "uisnap",
+  "version": "1.0.0",
+  "description": "Prepare screenshots and screen recordings as reference material for AI-assisted SVG and Lottie generation",
+  "type": "module",
+  "bin": {
+    "uisnap": "./bin/uisnap.js"
+  },
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "keywords": ["svg", "lottie", "screenshot", "ui", "animation", "cli"],
+  "author": "Frederic Lumiere",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^13.0.0",
+    "sharp": "^0.33.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "chalk": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
