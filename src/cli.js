@@ -30,6 +30,7 @@ export function run(argv) {
     .option('--format <fmt>', 'Output format hint: svg, lottie, animated-svg')
     .option('--style <desc>', 'Style notes for the AI (e.g., "dark theme, minimal")')
     .option('--name <name>', 'Name for this reference set (default: derived from filename)')
+    .option('--all', 'Process all files in ~/Desktop/uisnap drop/')
     .option('--clipboard', 'Paste image from clipboard')
     .option('--clean', 'Remove existing output contents before processing')
     .option('--list', 'List all reference sets in .uisnap/')
@@ -45,25 +46,25 @@ export function run(argv) {
   program.parse(argv);
 }
 
-function findNewestInDropFolder() {
-  if (!fs.existsSync(DROP_DIR)) return null;
+function findAllInDropFolder() {
+  if (!fs.existsSync(DROP_DIR)) return [];
 
-  let newest = null;
-  let newestTime = 0;
-
+  const files = [];
   const entries = fs.readdirSync(DROP_DIR);
   for (const entry of entries) {
     const ext = path.extname(entry).toLowerCase();
     if (!ALL_EXTS.has(ext)) continue;
     const fullPath = path.join(DROP_DIR, entry);
     const stat = fs.statSync(fullPath);
-    if (stat.mtimeMs > newestTime) {
-      newestTime = stat.mtimeMs;
-      newest = fullPath;
-    }
+    files.push({ path: fullPath, name: entry, mtimeMs: stat.mtimeMs });
   }
 
-  return newest;
+  return files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+}
+
+function findNewestInDropFolder() {
+  const files = findAllInDropFolder();
+  return files.length > 0 ? files[files.length - 1].path : null;
 }
 
 async function execute(input, opts) {
@@ -72,6 +73,31 @@ async function execute(input, opts) {
   // List mode
   if (opts.list) {
     return listSets(outputDir);
+  }
+
+  // Batch mode
+  if (opts.all) {
+    const files = findAllInDropFolder();
+    if (files.length === 0) {
+      console.error(chalk.red('No files found in ~/Desktop/uisnap drop/'));
+      process.exit(1);
+    }
+    console.log(chalk.cyan(`\nBatch: ${files.length} file${files.length !== 1 ? 's' : ''} in drop folder\n`));
+    let processed = 0;
+    let failed = 0;
+    for (const file of files) {
+      try {
+        console.log(chalk.cyan(`[${processed + failed + 1}/${files.length}] ${file.name}`));
+        await processFile(file.path, outputDir, opts);
+        processed++;
+      } catch (err) {
+        console.error(chalk.red(`  Failed: ${err.message}`));
+        failed++;
+      }
+    }
+    console.log('');
+    console.log(chalk.green(`Done: ${processed} processed`) + (failed > 0 ? chalk.red(`, ${failed} failed`) : ''));
+    return;
   }
 
   // Clipboard mode
@@ -100,7 +126,10 @@ async function execute(input, opts) {
     }
   }
 
-  const inputPath = path.resolve(input);
+  await processFile(path.resolve(input), outputDir, opts);
+}
+
+async function processFile(inputPath, outputDir, opts) {
   if (!fs.existsSync(inputPath)) {
     throw new Error(`File not found: ${inputPath}`);
   }
