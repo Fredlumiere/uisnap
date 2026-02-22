@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { processImage } from './process-image.js';
 import { processVideo } from './process-video.js';
 import { processGif } from './process-gif.js';
@@ -11,6 +12,9 @@ import { checkFfmpeg } from './utils.js';
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.svg', '.bmp', '.tiff']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v']);
 const GIF_EXTS = new Set(['.gif']);
+const ALL_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS, ...GIF_EXTS]);
+
+const DROP_DIR = path.join(os.homedir(), 'Desktop', 'uisnap drop');
 
 export function run(argv) {
   const program = new Command();
@@ -19,7 +23,7 @@ export function run(argv) {
     .name('uisnap')
     .description('Prepare screenshots and recordings as reference material for AI-assisted asset generation')
     .version('1.0.0')
-    .argument('[input]', 'Path to screenshot or recording')
+    .argument('[input]', 'Path to screenshot or recording (auto-detects newest file in ~/Desktop/uisnap drop/ if omitted)')
     .option('-o, --output <dir>', 'Output directory', '.uisnap')
     .option('-f, --frames <n>', 'Number of frames to extract from video', '5')
     .option('--keyframes', 'Extract only visually distinct frames (scene detection)')
@@ -41,6 +45,27 @@ export function run(argv) {
   program.parse(argv);
 }
 
+function findNewestInDropFolder() {
+  if (!fs.existsSync(DROP_DIR)) return null;
+
+  let newest = null;
+  let newestTime = 0;
+
+  const entries = fs.readdirSync(DROP_DIR);
+  for (const entry of entries) {
+    const ext = path.extname(entry).toLowerCase();
+    if (!ALL_EXTS.has(ext)) continue;
+    const fullPath = path.join(DROP_DIR, entry);
+    const stat = fs.statSync(fullPath);
+    if (stat.mtimeMs > newestTime) {
+      newestTime = stat.mtimeMs;
+      newest = fullPath;
+    }
+  }
+
+  return newest;
+}
+
 async function execute(input, opts) {
   const outputDir = path.resolve(opts.output);
 
@@ -58,12 +83,21 @@ async function execute(input, opts) {
     return processImage(imgPath, setDir, name, opts);
   }
 
-  // Input file mode
+  // Auto-detect from drop folder if no input provided
   if (!input) {
-    console.error(chalk.red('Error: Provide an input file or use --clipboard'));
-    console.log('  Usage: uisnap <screenshot-or-recording> [options]');
-    console.log('  Usage: uisnap --clipboard [options]');
-    process.exit(1);
+    const dropFile = findNewestInDropFolder();
+    if (dropFile) {
+      console.log(chalk.cyan(`Drop folder: ${path.basename(dropFile)}`));
+      input = dropFile;
+    } else {
+      console.error(chalk.red('No input file provided.'));
+      console.log('');
+      console.log('  Usage:');
+      console.log('    uisnap <file>              Process a specific file');
+      console.log('    uisnap --clipboard          Paste from clipboard');
+      console.log(`    uisnap                      Auto-detect newest file in ~/Desktop/uisnap drop/`);
+      process.exit(1);
+    }
   }
 
   const inputPath = path.resolve(input);
