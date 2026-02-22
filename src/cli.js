@@ -8,6 +8,7 @@ import { processVideo } from './process-video.js';
 import { processGif } from './process-gif.js';
 import { pasteFromClipboard } from './clipboard.js';
 import { checkFfmpeg } from './utils.js';
+import { getStatus, logGeneration, nextVersionPath } from './log.js';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.svg', '.bmp', '.tiff']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v']);
@@ -34,6 +35,7 @@ export function run(argv) {
     .option('--clipboard', 'Paste image from clipboard')
     .option('--clean', 'Remove existing output contents before processing')
     .option('--list', 'List all reference sets in .uisnap/')
+    .option('--status', 'Show all generated interpretations and revision counts')
     .action(async (input, opts) => {
       try {
         await execute(input, opts);
@@ -73,6 +75,11 @@ async function execute(input, opts) {
   // List mode
   if (opts.list) {
     return listSets(outputDir);
+  }
+
+  // Status mode
+  if (opts.status) {
+    return showStatus();
   }
 
   // Batch mode
@@ -155,6 +162,34 @@ async function processFile(inputPath, outputDir, opts) {
     await processGif(inputPath, setDir, name, opts);
   } else {
     throw new Error(`Unsupported file type: ${ext}`);
+  }
+}
+
+function showStatus() {
+  const entries = getStatus();
+  const keys = Object.keys(entries);
+
+  if (keys.length === 0) {
+    console.log(chalk.dim('No interpretations generated yet.'));
+    return;
+  }
+
+  console.log(chalk.bold('\nGenerated Interpretations:\n'));
+  for (const key of keys) {
+    const e = entries[key];
+    const revLabel = e.revisionCount === 1
+      ? chalk.dim('1 version')
+      : chalk.cyan(`${e.revisionCount} versions`);
+    console.log(`  ${chalk.green(key)}`);
+    console.log(`    Source:  ${chalk.dim(e.source)}`);
+    console.log(`    Latest:  ${e.latest}  (${revLabel})`);
+
+    if (e.revisions.length > 1) {
+      const last = e.revisions[e.revisions.length - 1];
+      if (last.style) console.log(`    Style:   ${chalk.dim(last.style)}`);
+      if (last.notes) console.log(`    Notes:   ${chalk.dim(last.notes)}`);
+    }
+    console.log('');
   }
 }
 
